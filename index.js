@@ -1,13 +1,10 @@
 const net = require('net')
 const events = require('events')
 const request = require('request-promise')
-const DOUYU_ADDR = 'openbarrage.douyutv.com'
-const DOUYU_PORT = 8601
 const REQUEST_TIMEOUT = 10000
 const HEARTBEAT_INTERVAL = 45000
-const FRESH_GIFT_INFO_INTERVAL = 30 * 60 * 1000
+const FRESH_ROOM_INFO_INTERVAL = 2 * 60 * 1000
 
-const fs = require('fs')
 
 class douyu_danmu extends events {
 
@@ -16,7 +13,7 @@ class douyu_danmu extends events {
         this._roomid = roomid
     }
 
-    async _get_gift_info() {
+    async _get_room_info() {
         let opt = {
             url: `http://open.douyucdn.cn/api/RoomApi/room/${this._roomid}`,
             timeout: REQUEST_TIMEOUT,
@@ -25,41 +22,40 @@ class douyu_danmu extends events {
         }
         try {
             let body = await request(opt)
-            let gift = body.data.gift
             let gift_info = {}
-            gift.forEach(g => {
+            body.data.gift.forEach(g => {
                 gift_info[g.id] = {
                     name: g.name,
-                    type: g.type,
                     price: g.pc
                 }
-                if (g.name == '100鱼丸') {
-                    gift_info[g.id].price = 0.1
-                }
             })
-            return gift_info
+            let online = body.data.online
+            return {
+                gift_info: gift_info,
+                online: online
+            }
         } catch (e) {
             return null
         }
     }
 
     async start() {
-        if (this._starting) {
-            return
-        }
+        if (this._starting) return
         this._starting = true
-        this._gift_info = await this._get_gift_info()
-        if (!this._gift_info) {
-            this.emit('error', new Error('Fail to get gift info'))
+        let room_info = await this._get_room_info()
+        if (!room_info) {
+            this.emit('error', new Error('Fail to get room info'))
             return this.emit('close')
         }
-        this._fresh_gift_info_timer = setInterval(this._fresh_gift_info.bind(this), FRESH_GIFT_INFO_INTERVAL)
+        this._gift_info = room_info.gift_info
+        this._emit_online(room_info)
+        this._fresh_room_info_timer = setInterval(this._fresh_room_info.bind(this), FRESH_ROOM_INFO_INTERVAL)
         this._start_tcp()
     }
 
     _start_tcp() {
         this._client = new net.Socket()
-        this._client.connect(DOUYU_PORT, DOUYU_ADDR)
+        this._client.connect(8601, 'openbarrage.douyutv.com')
         this._client.on('connect', () => {
             this.emit('connect')
             this._login_req()
@@ -79,27 +75,59 @@ class douyu_danmu extends events {
         this._send(`type@=loginreq/roomid@=${this._roomid}/`)
     }
 
+    _join_group() {
+        this._send(`type@=joingroup/rid@=${this._roomid}/gid@=-9999/`)
+    }
+
+    _heartbeat() {
+        this._send('type@=mrkl/')
+    }
+
+    async _fresh_room_info() {
+        let room_info = await this._get_room_info()
+        if (!room_info) {
+            return this.emit('error', new Error('Fail to fresh room info'))
+        }
+        this._gift_info = room_info.gift_info
+        this._emit_online(room_info)
+    }
+
+    _emit_online(room_info) {
+        let msg_obj = {
+            type: 'online',
+            time: new Date().getTime(),
+            count: room_info.online,
+            raw: room_info
+        }
+        this.emit('message', msg_obj)
+    }
+
     _on_data(data) {
-        if (this._last_buf) {
-            data = Buffer.concat([this._last_buf, data])
-            this._last_buf = null
+        if (this._residual_data) {
+            data = Buffer.concat([this._residual_data, data])
+            this._residual_data = null
         }
         while (data.length > 0) {
-            let msg_len = data.readInt16LE(0) + 4
-            if (data.length < msg_len) {
-                return this._last_buf = data
-            }
-            let single_msg = data.slice(0, msg_len)
-            data = data.slice(msg_len)
-            let msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
-            if (msg_array) {
-                msg_array.forEach(msg => {
-                    msg = msg.replace(/@=/g, '":"')
-                    msg = msg.replace(/\//g, '","')
-                    msg = msg.substring(0, msg.length - 3)
-                    msg = `{"${msg}}`
-                    this._format_msg(msg)
-                })
+            try {
+                let msg_len = data.readInt16LE(0) + 4
+                if (data.length < msg_len) {
+                    return this._residual_data = data
+                }
+                let single_msg = data.slice(0, msg_len)
+                data = data.slice(msg_len)
+                let msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
+                if (msg_array) {
+                    msg_array.forEach(msg => {
+                        msg = msg.replace(/@=/g, '":"')
+                        msg = msg.replace(/\//g, '","')
+                        msg = msg.substring(0, msg.length - 3)
+                        msg = `{"${msg}}`
+                        this._format_msg(msg)
+                    })
+                }
+            } catch (e) {
+                this._residual_data = null
+                return this.emit('error', e)
             }
         }
     }
@@ -136,18 +164,18 @@ class douyu_danmu extends events {
                 }
                 break
             case 'dgb':
-                let gift = this._gift_info[msg.gfid] || {}
+                let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0 }
                 msg_obj = {
                     type: 'gift',
                     time: new Date().getTime(),
-                    name: gift.name || '免费礼物',
+                    name: gift.name,
                     from: {
                         name: msg.nn,
                         rid: msg.uid,
                         level: parseInt(msg.level)
                     },
                     count: parseInt(msg.gfcnt || 1),
-                    price: parseInt(gift.price) || 0,
+                    price: parseInt(msg.gfcnt || 1) * gift.price,
                     raw: msg
                 }
                 let weight_msg = {
@@ -176,15 +204,19 @@ class douyu_danmu extends events {
                 try {
                     sui = JSON.parse(sui)
                 } catch (e) {
-                    sui = {}
+                    sui = {
+                        nick: '',
+                        id: '',
+                        level: 0
+                    }
                 }
                 msg_obj = {
                     type: 'deserve',
                     time: new Date().getTime(),
                     name: name,
                     from: {
-                        name: sui.nick || '',
-                        rid: sui.id || '',
+                        name: sui.nick,
+                        rid: sui.id,
                         level: parseInt(sui.level)
                     },
                     count: parseInt(msg.cnt || 1),
@@ -193,7 +225,13 @@ class douyu_danmu extends events {
                 }
                 break
             case 'loginres':
-                return this._send(`type@=joingroup/rid@=${this._roomid}/gid@=-9999/`)
+                msg_obj = {
+                    type: 'other',
+                    time: new Date().getTime(),
+                    raw: msg
+                }
+                this._join_group()
+                break
             default:
                 msg_obj = {
                     type: 'other',
@@ -218,25 +256,13 @@ class douyu_danmu extends events {
         }
     }
 
-    async _fresh_gift_info() {
-        let gift_info = await this._get_gift_info()
-        if (!gift_info) {
-            return this.emit('error', new Error('Fail to fresh gift info'))
-        }
-        this._gift_info = gift_info
-    }
 
-    _heartbeat() {
-        this._send('type@=mrkl/')
-    }
 
     _stop() {
         this._starting = false
         clearInterval(this._heartbeat_timer)
-        clearInterval(this._fresh_gift_info_timer)
-        try {
-            this._client.destroy()
-        } catch (e) { }
+        clearInterval(this._fresh_room_info_timer)
+        try { this._client.destroy() } catch (e) { }
     }
 
     stop() {
