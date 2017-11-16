@@ -57,9 +57,9 @@ class douyu_danmu extends events {
         this._client = new net.Socket()
         this._client.connect(8601, 'openbarrage.douyutv.com')
         this._client.on('connect', () => {
-            this.emit('connect')
             this._login_req()
             this._heartbeat_timer = setInterval(this._heartbeat.bind(this), HEARTBEAT_INTERVAL)
+            this.emit('connect')
         })
         this._client.on('error', err => {
             this.emit('error', err)
@@ -244,12 +244,12 @@ class douyu_danmu extends events {
     }
 
     _send(msg) {
-        let len = Buffer.byteLength(msg) + 9
-        let head = Buffer.from([len, 0x00, 0x00, 0x00, len, 0x00, 0x00, 0x00, 0xb1, 0x02, 0x00, 0x00])
-        let body = Buffer.from(msg)
-        let tail = Buffer.from([0x00])
-        let buf = Buffer.concat([head, body, tail])
         try {
+            let len = Buffer.byteLength(msg) + 9
+            let head = Buffer.from([len, 0x00, 0x00, 0x00, len, 0x00, 0x00, 0x00, 0xb1, 0x02, 0x00, 0x00])
+            let body = Buffer.from(msg)
+            let tail = Buffer.from([0x00])
+            let buf = Buffer.concat([head, body, tail])
             this._client.write(buf)
         } catch (err) {
             this.emit('error', err)
