@@ -1,5 +1,7 @@
 # douyu-danmu
 
+[![Coverage Status](https://coveralls.io/repos/github/BacooTang/douyu-danmu/badge.svg?branch=master)](https://coveralls.io/github/BacooTang/douyu-danmu?branch=master)
+
 douyu-danmu 是Node.js版斗鱼直播弹幕监听模块。
 
 简单易用，使用不到三十行代码，你就可以使用Node.js基于弹幕进一步开发。

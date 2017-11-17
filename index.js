@@ -11,6 +11,8 @@ class douyu_danmu extends events {
     constructor(roomid) {
         super()
         this._roomid = roomid
+        this._port = 8601
+        this._addr = 'openbarrage.douyutv.com'
     }
 
     async _get_room_info() {
@@ -55,7 +57,7 @@ class douyu_danmu extends events {
 
     _start_tcp() {
         this._client = new net.Socket()
-        this._client.connect(8601, 'openbarrage.douyutv.com')
+        this._client.connect(this._port, this._addr)
         this._client.on('connect', () => {
             this._login_req()
             this._heartbeat_timer = setInterval(this._heartbeat.bind(this), HEARTBEAT_INTERVAL)
@@ -136,15 +138,14 @@ class douyu_danmu extends events {
         try {
             msg = JSON.parse(msg)
         } catch (e) {
-            return this.emit('error', e)
+            this.emit('error', e)
+            return
         }
         let msg_obj
         switch (msg.type) {
             case 'chatmsg':
-                let plat = 'unknow'
-                if (msg.ct == '0') {
-                    plat = 'pc_web'
-                } else if (msg.ct == '1') {
+                let plat = 'pc_web'
+                if (msg.ct == '1') {
                     plat = 'android'
                 } else if (msg.ct == '2') {
                     plat = 'ios'
@@ -197,11 +198,11 @@ class douyu_danmu extends events {
                     price = 50
                 }
                 let sui = msg.sui
-                sui = sui.replace(/@A=/g, '":"')
-                sui = sui.replace(/@S/g, '","')
-                sui = sui.substring(0, sui.length - 4)
-                sui = `{"${sui}}`
                 try {
+                    sui = sui.replace(/@A=/g, '":"')
+                    sui = sui.replace(/@S/g, '","')
+                    sui = sui.substring(0, sui.length - 4)
+                    sui = `{"${sui}}`
                     sui = JSON.parse(sui)
                 } catch (e) {
                     sui = {

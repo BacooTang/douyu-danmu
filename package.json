@@ -1,10 +1,12 @@
 {
   "name": "douyu-danmu",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "douyu tv danmu module",
   "main": "index.js",
   "scripts": {
-    "test": "ava"
+    "test": "ava",
+    "report": "nyc ava --verbose && nyc report --reporter=html",
+    "coverage": "nyc report --reporter=text-lcov | coveralls"
   },
   "repository": {
     "type": "git",
