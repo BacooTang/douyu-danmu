@@ -137,6 +137,7 @@ class douyu_danmu extends events {
 
     _format_msg(msg) {
         try {
+            msg = msg.replace(/\\/g, '')
             msg = JSON.parse(msg)
         } catch (e) {
             this.emit('error', e)
