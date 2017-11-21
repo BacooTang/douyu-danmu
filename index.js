@@ -166,7 +166,7 @@ class douyu_danmu extends events {
                 }
                 break
             case 'dgb':
-                let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0 }
+                let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0, is_yuwan: false }
                 msg_obj = {
                     type: 'gift',
                     time: new Date().getTime(),
