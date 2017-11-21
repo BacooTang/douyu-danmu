@@ -190,6 +190,7 @@ class douyu_danmu extends events {
                 this.emit('message', weight_msg)
                 break
             case 'bc_buy_deserve':
+                let time = new Date().getTime()
                 let name = '初级酬勤'
                 let price = 15
                 if (msg.lev === '2') {
@@ -203,7 +204,7 @@ class douyu_danmu extends events {
                 try {
                     sui = sui.replace(/@A=/g, '":"')
                     sui = sui.replace(/@S/g, '","')
-                    sui = sui.substring(0, sui.length - 4)
+                    sui = sui.substring(0, sui.length - 2)
                     sui = `{"${sui}}`
                     sui = JSON.parse(sui)
                 } catch (e) {
@@ -215,13 +216,14 @@ class douyu_danmu extends events {
                 }
                 msg_obj = {
                     type: 'deserve',
-                    time: new Date().getTime(),
+                    time: time,
                     name: name,
                     from: {
                         name: sui.nick,
                         rid: sui.id,
                         level: parseInt(sui.level)
                     },
+                    id: `${time}_${sui.id}${msg.rid}${msg.lev}${msg.hits}${sui.level}${sui.exp}`,
                     count: parseInt(msg.cnt || 1),
                     price: price,
                     raw: msg
