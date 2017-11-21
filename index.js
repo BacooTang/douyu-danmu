@@ -27,6 +27,7 @@ class douyu_danmu extends events {
             let gift_info = {}
             body.data.gift.forEach(g => {
                 gift_info[g.id] = {
+                    is_yuwan: g.type == '1' ? true : false,
                     name: g.name,
                     price: g.pc
                 }
@@ -175,6 +176,7 @@ class douyu_danmu extends events {
                         rid: msg.uid,
                         level: parseInt(msg.level)
                     },
+                    is_yuwan: gift.is_yuwan,
                     id: `${msg.uid}${msg.rid}${msg.gfid}${msg.hits}${msg.level}`,
                     count: parseInt(msg.gfcnt || 1),
                     price: parseInt(msg.gfcnt || 1) * gift.price,

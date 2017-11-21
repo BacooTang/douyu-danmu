@@ -1,6 +1,6 @@
 {
   "name": "douyu-danmu",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "douyu tv danmu module",
   "main": "index.js",
   "scripts": {
