@@ -166,15 +166,17 @@ class douyu_danmu extends events {
                 break
             case 'dgb':
                 let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0 }
+                let time = new Date().getTime()
                 msg_obj = {
                     type: 'gift',
-                    time: new Date().getTime(),
+                    time: time,
                     name: gift.name,
                     from: {
                         name: msg.nn,
                         rid: msg.uid,
                         level: parseInt(msg.level)
                     },
+                    id: `${time}_${msg.uid}${msg.rid}${msg.gfid}${msg.hits}${msg.level}`,
                     count: parseInt(msg.gfcnt || 1),
                     price: parseInt(msg.gfcnt || 1) * gift.price,
                     raw: msg
