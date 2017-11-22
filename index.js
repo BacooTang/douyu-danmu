@@ -112,7 +112,7 @@ class douyu_danmu extends events {
         } else {
             this._all_buf = Buffer.concat([this._all_buf, data])
         }
-        while (this._all_buf.length > 0) {
+        while (this._all_buf.length > 8) {
             try {
                 let len_0 = this._all_buf.readInt16LE(0)
                 let len_1 = this._all_buf.readInt16LE(4)
