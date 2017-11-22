@@ -57,6 +57,7 @@ class douyu_danmu extends events {
     }
 
     _start_tcp() {
+        this._all_buf = Buffer.alloc(0)
         this._client = new net.Socket()
         this._client.connect(this._port, this._addr)
         this._client.on('connect', () => {
@@ -106,18 +107,30 @@ class douyu_danmu extends events {
     }
 
     _on_data(data) {
-        if (this._residual_data) {
-            data = Buffer.concat([this._residual_data, data])
-            this._residual_data = null
+        if (this._all_buf.length === 0) {
+            this._all_buf = data
+        } else {
+            this._all_buf = Buffer.concat([this._all_buf, data])
         }
-        while (data.length > 0) {
+        while (this._all_buf.length > 0) {
             try {
-                let msg_len = data.readInt16LE(0) + 4
-                if (data.length < msg_len) {
-                    return this._residual_data = data
+                let len_0 = this._all_buf.readInt16LE(0)
+                let len_1 = this._all_buf.readInt16LE(4)
+                if (len_0 !== len_1) {
+                    this._all_buf = Buffer.alloc(0)
+                    return
                 }
-                let single_msg = data.slice(0, msg_len)
-                data = data.slice(msg_len)
+                let msg_len = len_0 + 4
+                if (this._all_buf.length < msg_len) {
+                    return
+                }
+                let single_msg = this._all_buf.slice(0, msg_len)
+                let single_msg_tail = single_msg[single_msg.length - 1]
+                if (single_msg_tail !== 0) {
+                    this._all_buf = Buffer.alloc(0)
+                    return
+                }
+                this._all_buf = this._all_buf.slice(msg_len)
                 let msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
                 if (msg_array) {
                     msg_array.forEach(msg => {
@@ -129,7 +142,6 @@ class douyu_danmu extends events {
                     })
                 }
             } catch (e) {
-                this._residual_data = null
                 return this.emit('error', e)
             }
         }
@@ -266,6 +278,7 @@ class douyu_danmu extends events {
 
     _stop() {
         this._starting = false
+        this._all_buf = null
         clearInterval(this._heartbeat_timer)
         clearInterval(this._fresh_room_info_timer)
         try { this._client.destroy() } catch (e) { }
