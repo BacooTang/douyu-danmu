@@ -35,7 +35,8 @@ class douyu_danmu extends events {
             let online = body.data.online
             return {
                 gift_info: gift_info,
-                online: online
+                online: online,
+                raw: body.data
             }
         } catch (e) {
             return null
@@ -101,7 +102,7 @@ class douyu_danmu extends events {
             type: 'online',
             time: new Date().getTime(),
             count: room_info.online,
-            raw: room_info
+            raw: room_info.raw
         }
         this.emit('message', msg_obj)
     }
