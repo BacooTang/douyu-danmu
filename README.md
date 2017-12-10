@@ -99,8 +99,8 @@ client.on('close', () => {
 
 ### msg对象
 
-msg对象type有chat,gift,online,weight,deserve,other五种值
-分别对应聊天内容、礼物、人气值、体重、酬勤、其他
+msg对象type有chat,gift,weight,deserve,other四种值
+分别对应聊天内容、礼物、体重、酬勤、其他
 
 #### chat消息
 ```javascript
@@ -130,18 +130,10 @@ msg对象type有chat,gift,online,weight,deserve,other五种值
             rid: '发送者rid,String',
             level: '发送者等级,Number'
         },
+        is_yuwan: '是否是鱼丸,Boolean',
+        id: '礼物唯一id,String',
         count: '礼物数量,Number',
         price: '礼物总价值(单位鱼翅),Number'
-        raw: '原始消息,Object'
-    }
-```
-
-#### online消息
-```javascript
-    {
-        type: 'online',
-        time: '毫秒时间戳(服务器无返回time,此处为本地收到消息时间),Number',
-        count: '主播当前人气,Number',
         raw: '原始消息,Object'
     }
 ```
@@ -167,6 +159,7 @@ msg对象type有chat,gift,online,weight,deserve,other五种值
             rid: '发送者rid,String',
             level: '发送者等级,Number'
         },
+        id: '礼物唯一id,String',
         count: '酬勤数量,Number',
         price: '礼物总价值(单位鱼翅),Number',
         raw: '原始消息,Object'

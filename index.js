@@ -1,24 +1,18 @@
 const net = require('net')
 const events = require('events')
 const request = require('request-promise')
-const REQUEST_TIMEOUT = 10000
-const HEARTBEAT_INTERVAL = 45000
-const FRESH_ROOM_INFO_INTERVAL = 2 * 60 * 1000
-
 
 class douyu_danmu extends events {
 
     constructor(roomid) {
         super()
         this._roomid = roomid
-        this._port = 8601
-        this._addr = 'openbarrage.douyutv.com'
     }
 
-    async _get_room_info() {
+    async _get_gift_info() {
         let opt = {
             url: `http://open.douyucdn.cn/api/RoomApi/room/${this._roomid}`,
-            timeout: REQUEST_TIMEOUT,
+            timeout: 10000,
             json: true,
             gzip: true
         }
@@ -32,38 +26,40 @@ class douyu_danmu extends events {
                     price: g.pc
                 }
             })
-            let online = body.data.online
-            return {
-                gift_info: gift_info,
-                online: online,
-                raw: body.data
-            }
+            return gift_info
         } catch (e) {
             return null
         }
     }
 
+    async _fresh_gift_info() {
+        let gift_info = await this._get_gift_info()
+        if (!gift_info) {
+            return this.emit('error', new Error('Fail to fresh room info'))
+        }
+        this._gift_info = gift_info.gift_info
+    }
+
     async start() {
         if (this._starting) return
         this._starting = true
-        let room_info = await this._get_room_info()
-        if (!room_info) {
+        let gift_info = await this._get_gift_info()
+        if (!gift_info) {
             this.emit('error', new Error('Fail to get room info'))
             return this.emit('close')
         }
-        this._gift_info = room_info.gift_info
-        this._emit_online(room_info)
-        this._fresh_room_info_timer = setInterval(this._fresh_room_info.bind(this), FRESH_ROOM_INFO_INTERVAL)
+        this._gift_info = gift_info
+        this._fresh_gift_info_timer = setInterval(this._fresh_gift_info.bind(this), 30 * 60 * 1000)
         this._start_tcp()
     }
 
     _start_tcp() {
         this._all_buf = Buffer.alloc(0)
         this._client = new net.Socket()
-        this._client.connect(this._port, this._addr)
+        this._client.connect(8601, 'openbarrage.douyutv.com')
         this._client.on('connect', () => {
             this._login_req()
-            this._heartbeat_timer = setInterval(this._heartbeat.bind(this), HEARTBEAT_INTERVAL)
+            this._heartbeat_timer = setInterval(this._heartbeat.bind(this), 45000)
             this.emit('connect')
         })
         this._client.on('error', err => {
@@ -88,25 +84,6 @@ class douyu_danmu extends events {
         this._send('type@=mrkl/')
     }
 
-    async _fresh_room_info() {
-        let room_info = await this._get_room_info()
-        if (!room_info) {
-            return this.emit('error', new Error('Fail to fresh room info'))
-        }
-        this._gift_info = room_info.gift_info
-        this._emit_online(room_info)
-    }
-
-    _emit_online(room_info) {
-        let msg_obj = {
-            type: 'online',
-            time: new Date().getTime(),
-            count: room_info.online,
-            raw: room_info.raw
-        }
-        this.emit('message', msg_obj)
-    }
-
     _on_data(data) {
         if (this._all_buf.length === 0) {
             this._all_buf = data
@@ -117,20 +94,14 @@ class douyu_danmu extends events {
             try {
                 let len_0 = this._all_buf.readInt16LE(0)
                 let len_1 = this._all_buf.readInt16LE(4)
-                if (len_0 !== len_1) {
-                    this._all_buf = Buffer.alloc(0)
-                    return
-                }
+                if (len_0 !== len_1)
+                    return this._all_buf = Buffer.alloc(0)
                 let msg_len = len_0 + 4
-                if (this._all_buf.length < msg_len) {
-                    return
-                }
+                if (this._all_buf.length < msg_len) return
                 let single_msg = this._all_buf.slice(0, msg_len)
                 let single_msg_tail = single_msg[single_msg.length - 1]
-                if (single_msg_tail !== 0) {
-                    this._all_buf = Buffer.alloc(0)
-                    return
-                }
+                if (single_msg_tail !== 0)
+                    return this._all_buf = Buffer.alloc(0)
                 this._all_buf = this._all_buf.slice(msg_len)
                 let msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
                 if (msg_array) {
@@ -150,13 +121,12 @@ class douyu_danmu extends events {
 
     _format_msg(msg) {
         try {
-            msg = msg.replace(/\\/g, '')
-            msg = JSON.parse(msg)
+            msg = JSON.parse(msg.replace(/\\/g, ''))
         } catch (e) {
-            this.emit('error', e)
-            return
+            return this.emit('error', e)
         }
         let msg_obj
+        let time = new Date().getTime()
         switch (msg.type) {
             case 'chatmsg':
                 let plat = 'pc_web'
@@ -167,7 +137,7 @@ class douyu_danmu extends events {
                 }
                 msg_obj = {
                     type: 'chat',
-                    time: new Date().getTime(),
+                    time,
                     from: {
                         name: msg.nn,
                         rid: msg.uid,
@@ -183,7 +153,7 @@ class douyu_danmu extends events {
                 let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0, is_yuwan: false }
                 msg_obj = {
                     type: 'gift',
-                    time: new Date().getTime(),
+                    time,
                     name: gift.name,
                     from: {
                         name: msg.nn,
@@ -230,7 +200,7 @@ class douyu_danmu extends events {
                 }
                 msg_obj = {
                     type: 'deserve',
-                    time: new Date().getTime(),
+                    time,
                     name: name,
                     from: {
                         name: sui.nick,
@@ -246,7 +216,7 @@ class douyu_danmu extends events {
             case 'loginres':
                 msg_obj = {
                     type: 'other',
-                    time: new Date().getTime(),
+                    time,
                     raw: msg
                 }
                 this._join_group()
@@ -254,7 +224,7 @@ class douyu_danmu extends events {
             default:
                 msg_obj = {
                     type: 'other',
-                    time: new Date().getTime(),
+                    time,
                     raw: msg
                 }
                 break
@@ -275,13 +245,10 @@ class douyu_danmu extends events {
         }
     }
 
-
-
     _stop() {
         this._starting = false
-        this._all_buf = null
         clearInterval(this._heartbeat_timer)
-        clearInterval(this._fresh_room_info_timer)
+        clearInterval(this._fresh_gift_info_timer)
         try { this._client.destroy() } catch (e) { }
     }
 
@@ -289,7 +256,6 @@ class douyu_danmu extends events {
         this.removeAllListeners()
         this._stop()
     }
-
 }
 
 module.exports = douyu_danmu
