@@ -37,7 +37,7 @@ class douyu_danmu extends events {
         if (!gift_info) {
             return this.emit('error', new Error('Fail to fresh room info'))
         }
-        this._gift_info = gift_info.gift_info
+        this._gift_info = gift_info
     }
 
     async start() {
