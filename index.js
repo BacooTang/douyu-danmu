@@ -1,12 +1,14 @@
 const net = require('net')
+const socks = require('socks').SocksClient;
 const events = require('events')
 const request = require('request-promise')
 
 class douyu_danmu extends events {
 
-    constructor(roomid) {
+    constructor(roomid, proxy) {
         super()
         this._roomid = roomid
+        this._proxy = proxy
     }
 
     async _get_gift_info() {
@@ -53,10 +55,34 @@ class douyu_danmu extends events {
         this._start_tcp()
     }
 
-    _start_tcp() {
+    async _start_tcp() {
         this._all_buf = Buffer.alloc(0)
-        this._client = new net.Socket()
-        this._client.connect(8601, 'openbarrage.douyutv.com')
+        if (this._proxy) {
+            let options = {
+                proxy: {
+                    ipaddress: this._proxy.ip,
+                    port: this._proxy.port,
+                    type: 5
+                },
+                command: 'connect',
+                destination: {
+                    host: 'openbarrage.douyutv.com',
+                    port: 8601
+                },
+                timeout: 30000
+            }
+            options.userId = this._proxy.name || null
+            options.password = this._proxy.pass || null
+            try {
+                let info = await socks.createConnection(options)
+                this._client = info.socket
+            } catch (e) {
+                this.emit('error', e)
+            }
+        } else {
+            this._client = new net.Socket()
+            this._client.connect(8601, 'openbarrage.douyutv.com')
+        }
         this._client.on('connect', () => {
             this._login_req()
             this._heartbeat_timer = setInterval(this._heartbeat.bind(this), 45000)

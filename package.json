@@ -19,7 +19,8 @@
   ],
   "dependencies": {
     "request": "*",
-    "request-promise": "*"
+    "request-promise": "*",
+    "socks": "^2.1.2"
   },
   "author": "BacooTang",
   "license": "MIT",
