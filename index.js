@@ -9,6 +9,10 @@ class douyu_danmu extends events {
     constructor(roomid, proxy) {
         super()
         this._roomid = roomid
+        this.set_proxy(proxy)
+    }
+
+    set_proxy(proxy) {
         this._agent = null
         if (proxy) {
             this._proxy = proxy
