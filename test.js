@@ -331,7 +331,10 @@
 
 
 const douyu_danmu = require('./index')
-const c = new douyu_danmu('321370')
+const c = new douyu_danmu('321370', {
+	ip: '193.93.194.134',
+	port: 1085
+})
 c.on('error', e => console.log(e))
 c.on('connect', e => console.log('connect'))
 c.on('close', e => console.log('close'))

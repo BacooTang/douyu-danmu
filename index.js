@@ -1,14 +1,23 @@
 const net = require('net')
-const socks = require('socks').SocksClient;
 const events = require('events')
 const request = require('request-promise')
+const socks = require('socks').SocksClient
+const socks_agent = require('socks-proxy-agent')
 
 class douyu_danmu extends events {
 
     constructor(roomid, proxy) {
         super()
         this._roomid = roomid
-        this._proxy = proxy
+        this._agent = null
+        if (proxy) {
+            this._proxy = proxy
+            let auth = ''
+            if (proxy.name && proxy.pass)
+                auth = `${proxy.name}:${proxy.pass}@`
+            let socks_url = `socks://${auth}${proxy.ip}:${proxy.port || 8080}`
+            this._agent = new socks_agent(socks_url)
+        }
     }
 
     async _get_gift_info() {
@@ -16,7 +25,8 @@ class douyu_danmu extends events {
             url: `http://open.douyucdn.cn/api/RoomApi/room/${this._roomid}`,
             timeout: 10000,
             json: true,
-            gzip: true
+            gzip: true,
+            agent: this._agent
         }
         try {
             let body = await request(opt)
