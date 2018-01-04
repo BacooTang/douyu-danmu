@@ -102,8 +102,8 @@ class douyu_danmu extends events {
         } else {
             this._client = new net.Socket()
             this._client.connect(8601, 'openbarrage.douyutv.com')
+            this._client.on('connect', on_connect)
         }
-        this._client.on('connect', on_connect)
         this._client.on('error', err => {
             this.emit('error', err)
         })
