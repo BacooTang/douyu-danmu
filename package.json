@@ -1,6 +1,6 @@
 {
   "name": "douyu-danmu",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "douyu tv danmu module",
   "main": "index.js",
   "scripts": {
@@ -20,7 +20,8 @@
   "dependencies": {
     "request": "*",
     "request-promise": "*",
-    "socks": "^2.1.2"
+    "socks": "^2.1.2",
+    "socks-proxy-agent": "*"
   },
   "author": "BacooTang",
   "license": "MIT",
@@ -31,7 +32,6 @@
   "devDependencies": {
     "ava": "^0.23.0",
     "coveralls": "^3.0.0",
-    "nyc": "^11.3.0",
-    "socks-proxy-agent": "*"
+    "nyc": "^11.3.0"
   }
 }
