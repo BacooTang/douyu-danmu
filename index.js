@@ -57,6 +57,11 @@ class douyu_danmu extends events {
 
     async _start_tcp() {
         this._all_buf = Buffer.alloc(0)
+        const on_connect = () => {
+            this._login_req()
+            this._heartbeat_timer = setInterval(this._heartbeat.bind(this), 45000)
+            this.emit('connect')
+        }
         if (this._proxy) {
             let options = {
                 proxy: {
@@ -76,6 +81,7 @@ class douyu_danmu extends events {
             try {
                 let info = await socks.createConnection(options)
                 this._client = info.socket
+                on_connect()
             } catch (e) {
                 this.emit('error', e)
             }
@@ -83,11 +89,7 @@ class douyu_danmu extends events {
             this._client = new net.Socket()
             this._client.connect(8601, 'openbarrage.douyutv.com')
         }
-        this._client.on('connect', () => {
-            this._login_req()
-            this._heartbeat_timer = setInterval(this._heartbeat.bind(this), 45000)
-            this.emit('connect')
-        })
+        this._client.on('connect', on_connect)
         this._client.on('error', err => {
             this.emit('error', err)
         })
