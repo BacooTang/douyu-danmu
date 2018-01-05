@@ -206,6 +206,7 @@ class douyu_danmu extends events {
                     id: `${msg.uid}${msg.rid}${msg.gfid}${msg.hits}${msg.level}`,
                     count: parseInt(msg.gfcnt || 1),
                     price: parseInt(msg.gfcnt || 1) * gift.price,
+                    earn: parseInt(msg.gfcnt || 1) * gift.price,
                     raw: msg
                 }
                 let weight_msg = {
