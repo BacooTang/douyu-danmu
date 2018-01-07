@@ -6,7 +6,6 @@ const socks = require('socks').SocksClient
 const socks_agent = require('socks-proxy-agent')
 
 const timeout = 30000
-const close_delay = 100
 const danmu_port = 8601
 const heartbeat_interval = 45000
 const fresh_gift_interval = 60 * 60 * 1000
