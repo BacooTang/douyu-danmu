@@ -1,11 +1,13 @@
 const net = require('net')
 const url = require('url')
+const delay = require('delay')
 const events = require('events')
 const request = require('request-promise')
 const socks = require('socks').SocksClient
 const socks_agent = require('socks-proxy-agent')
 
 const timeout = 30000
+const close_delay = 100
 const danmu_port = 8601
 const heartbeat_interval = 45000
 const fresh_gift_interval = 60 * 60 * 1000
@@ -90,9 +92,10 @@ class douyu_danmu extends events {
         this._client.on('error', err => {
             this.emit('error', err)
         })
-        this._client.on('close', () => {
+        this._client.on('close', async () => {
             this._stop()
             this.emit('close')
+            await delay(close_delay)
             this._reconnect && this.start()
         })
         this._client.on('data', this._on_data.bind(this))

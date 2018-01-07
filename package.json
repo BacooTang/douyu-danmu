@@ -16,6 +16,7 @@
     "danmu"
   ],
   "dependencies": {
+    "delay": "^2.0.0",
     "socks": "^2.1.2",
     "request": "^2.83.0",
     "request-promise": "^4.2.2",
