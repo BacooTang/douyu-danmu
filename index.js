@@ -67,7 +67,6 @@ class douyu_danmu extends events {
     async start() {
         if (this._starting) return
         this._starting = true
-        this._reconnect = true
         await this._fresh_gift_info()
         if (!this._gift_info) return this.emit('close')
         this._fresh_gift_info_timer = setInterval(this._fresh_gift_info.bind(this), fresh_gift_interval)
@@ -95,8 +94,6 @@ class douyu_danmu extends events {
         this._client.on('close', async () => {
             this._stop()
             this.emit('close')
-            await delay(close_delay)
-            this._reconnect && this.start()
         })
         this._client.on('data', this._on_data.bind(this))
     }
@@ -270,7 +267,6 @@ class douyu_danmu extends events {
     }
 
     stop() {
-        this._reconnect = false
         this.removeAllListeners()
         this._stop()
     }
