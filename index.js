@@ -1,6 +1,5 @@
 const net = require('net')
 const url = require('url')
-const delay = require('delay')
 const events = require('events')
 const request = require('request-promise')
 const socks = require('socks').SocksClient
