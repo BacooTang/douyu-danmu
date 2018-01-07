@@ -1,10 +1,8 @@
 # douyu-danmu
 
-[![Coverage Status](https://coveralls.io/repos/github/BacooTang/douyu-danmu/badge.svg?branch=master)](https://coveralls.io/github/BacooTang/douyu-danmu?branch=master)
-
 douyu-danmu 是Node.js版斗鱼直播弹幕监听模块。
 
-简单易用，使用不到三十行代码，你就可以使用Node.js基于弹幕进一步开发。
+简单易用，使用三十行左右代码，你就可以使用Node.js基于弹幕进一步开发。
 
 ## Installation
 
@@ -35,8 +33,11 @@ client.on('message', msg => {
         case 'gift':
             console.log(`[${msg.from.name}]->赠送${msg.count}个${msg.name}`)
             break
-        default:
-            //do what you like
+        case 'yuwan':
+            console.log(`[${msg.from.name}]->赠送${msg.count}个${msg.name}`)
+            break
+        case 'deserve':
+            console.log(`[${msg.from.name}]->赠送${msg.count}个${msg.name}`)
             break
     }
 })
@@ -63,6 +64,16 @@ const client = new douyu_danmu(roomid)
 client.start()
 ```
 
+### 使用socks5代理监听
+
+```javascript
+const douyu_danmu = require('douyu-danmu')
+const roomid = '666666'
+const proxy = 'socks://name:pass@127.0.0.1:1080'
+const client = new douyu_danmu({roomid,proxy})
+client.start()
+```
+
 ### 停止监听弹幕
 
 ```javascript
@@ -72,35 +83,23 @@ client.stop()
 ### 监听事件
 
 ```javascript
-client.on('connect', () => {
+client.on('connect', _ => {
     console.log('connect')
 })
 
-client.on('message', msg => {
-    console.log('message',msg)
-})
+client.on('message', console.log)
 
-client.on('error', e => {
-    console.log('error',e)
-})
+client.on('error', console.log)
 
-client.on('close', () => {
+client.on('close', _ => {
     console.log('close')
-})
-```
-
-### 断线重连
-
-```javascript
-client.on('close', () => {
-    client.start()
 })
 ```
 
 ### msg对象
 
-msg对象type有chat,gift,weight,deserve,other四种值
-分别对应聊天内容、礼物、体重、酬勤、其他
+msg对象type有chat,gift,yuwan,deserve四种值
+分别对应聊天内容、礼物、鱼丸、酬勤
 
 #### chat消息
 ```javascript
@@ -114,8 +113,7 @@ msg对象type有chat,gift,weight,deserve,other四种值
             plat: '发送者平台(android,ios,pc_web,unknow),String'
         },
         id: '弹幕唯一id,String',
-        content: '聊天内容,String',
-        raw: '原始消息,Object'
+        content: '聊天内容,String'
     }
 ```
 
@@ -130,21 +128,26 @@ msg对象type有chat,gift,weight,deserve,other四种值
             rid: '发送者rid,String',
             level: '发送者等级,Number'
         },
-        is_yuwan: '是否是鱼丸,Boolean',
         id: '礼物唯一id,String',
         count: '礼物数量,Number',
-        price: '礼物总价值(单位鱼翅),Number'
-        raw: '原始消息,Object'
+        price: '礼物总价值(单位鱼翅),Number',
+        earn: '礼物总价值(单位元),Number'
     }
 ```
 
-#### weight消息
+#### yuwan消息
 ```javascript
     {
-        type: 'weight',
+        type: 'yuwan',
         time: '毫秒时间戳(服务器无返回time,此处为本地收到消息时间),Number',
-        count: '主播当前体重,Number',
-        raw: '原始消息,Object'
+        name: '礼物名称,String',
+        from: {
+            name: '发送者昵称,String',
+            rid: '发送者rid,String',
+            level: '发送者等级,Number'
+        },
+        id: '礼物唯一id,String',
+        count: '礼物数量,Number'
     }
 ```
 
@@ -161,16 +164,7 @@ msg对象type有chat,gift,weight,deserve,other四种值
         },
         id: '礼物唯一id,String',
         count: '酬勤数量,Number',
-        price: '礼物总价值(单位鱼翅),Number',
-        raw: '原始消息,Object'
-    }
-```
-
-#### other消息
-```javascript
-    {
-        type: 'other',
-        time: '毫秒时间戳(服务器无返回time,此处为本地收到消息时间),Number',
-        raw: '原始消息,Object'
+        price: '酬勤总价值(单位鱼翅),Number',
+        earn: '酬勤总价值(单位元),Number'
     }
 ```

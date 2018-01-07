@@ -1,108 +1,91 @@
 const net = require('net')
+const url = require('url')
 const events = require('events')
 const request = require('request-promise')
 const socks = require('socks').SocksClient
 const socks_agent = require('socks-proxy-agent')
 
+const timeout = 30000
+const danmu_port = 8601
+const heartbeat_interval = 45000
+const fresh_gift_interval = 60 * 60 * 1000
+const danmu_addr = 'openbarrage.douyutv.com'
+const free_gift = { name: '免费礼物', price: 0, is_yuwan: false }
+const r = request.defaults({ json: true, gzip: true, timeout: timeout })
+
+
 class douyu_danmu extends events {
 
-    constructor(roomid, proxy) {
+    constructor(opt) {
         super()
-        this._roomid = roomid
-        this.set_proxy(proxy)
+        if (typeof opt === 'string')
+            this._roomid = opt
+        else if (typeof opt === 'object') {
+            this._roomid = opt.roomid
+            this.set_proxy(opt.proxy)
+        }
     }
 
     set_proxy(proxy) {
-        this._agent = null
-        if (proxy) {
-            this._proxy = proxy
-            let auth = ''
-            if (proxy.name && proxy.pass)
-                auth = `${proxy.name}:${proxy.pass}@`
-            let socks_url = `socks://${auth}${proxy.ip}:${proxy.port || 8080}`
-            this._agent = new socks_agent(socks_url)
+        const proxy_obj = url.parse(proxy)
+        this._agent = new socks_agent(proxy)
+        this._proxy_opt = {
+            timeout: timeout,
+            command: 'connect',
+            destination: { host: danmu_addr, port: danmu_port },
+            proxy: { ipaddress: proxy_obj.hostname, port: parseInt(proxy_obj.port), type: 5 },
+        }
+        if (proxy_obj.auth) {
+            const auth = proxy_obj.auth.split(':')
+            this._proxy_opt.proxy.userId = auth[0]
+            this._proxy_opt.proxy.password = auth[1]
         }
     }
 
     async _get_gift_info() {
-        let opt = {
-            url: `http://open.douyucdn.cn/api/RoomApi/room/${this._roomid}`,
-            timeout: 10000,
-            json: true,
-            gzip: true,
-            agent: this._agent
-        }
         try {
-            let body = await request(opt)
-            let gift_info = {}
+            const gift_info = {}
+            const body = await r({
+                url: `http://open.douyucdn.cn/api/RoomApi/room/${this._roomid}`,
+                agent: this._agent
+            })
             body.data.gift.forEach(g => {
-                gift_info[g.id] = {
-                    is_yuwan: g.type == '1' ? true : false,
-                    name: g.name,
-                    price: g.pc
-                }
+                gift_info[g.id] = { name: g.name, price: g.pc, is_yuwan: g.type == '1' ? true : false }
             })
             return gift_info
-        } catch (e) {
-            return null
-        }
+        } catch (e) { }
     }
 
     async _fresh_gift_info() {
-        let gift_info = await this._get_gift_info()
-        if (!gift_info) {
-            return this.emit('error', new Error('Fail to fresh room info'))
-        }
+        const gift_info = await this._get_gift_info()
+        if (!gift_info) return this.emit('error', new Error('Fail to fresh room info'))
         this._gift_info = gift_info
     }
 
     async start() {
         if (this._starting) return
         this._starting = true
-        let gift_info = await this._get_gift_info()
-        if (!gift_info) {
-            this.emit('error', new Error('Fail to get room info'))
-            return this.emit('close')
-        }
-        this._gift_info = gift_info
-        this._fresh_gift_info_timer = setInterval(this._fresh_gift_info.bind(this), 30 * 60 * 1000)
+        this._reconnect = true
+        await this._fresh_gift_info()
+        if (!this._gift_info) return this.emit('close')
+        this._fresh_gift_info_timer = setInterval(this._fresh_gift_info.bind(this), fresh_gift_interval)
         this._start_tcp()
     }
 
     async _start_tcp() {
         this._all_buf = Buffer.alloc(0)
-        const on_connect = () => {
-            this._login_req()
-            this._heartbeat_timer = setInterval(this._heartbeat.bind(this), 45000)
-            this.emit('connect')
-        }
-        if (this._proxy) {
-            let options = {
-                proxy: {
-                    ipaddress: this._proxy.ip,
-                    port: this._proxy.port,
-                    type: 5
-                },
-                command: 'connect',
-                destination: {
-                    host: 'openbarrage.douyutv.com',
-                    port: 8601
-                },
-                timeout: 30000
-            }
-            options.userId = this._proxy.name || null
-            options.password = this._proxy.pass || null
+        if (this._proxy_opt) {
             try {
-                let info = await socks.createConnection(options)
+                const info = await socks.createConnection(this._proxy_opt)
                 this._client = info.socket
-                on_connect()
+                this._on_connect()
             } catch (e) {
                 this.emit('error', e)
             }
         } else {
             this._client = new net.Socket()
-            this._client.connect(8601, 'openbarrage.douyutv.com')
-            this._client.on('connect', on_connect)
+            this._client.connect(danmu_port, danmu_addr)
+            this._client.on('connect', this._on_connect.bind(this))
         }
         this._client.on('error', err => {
             this.emit('error', err)
@@ -110,8 +93,15 @@ class douyu_danmu extends events {
         this._client.on('close', () => {
             this._stop()
             this.emit('close')
+            this._reconnect && this.start()
         })
         this._client.on('data', this._on_data.bind(this))
+    }
+
+    _on_connect() {
+        this._login_req()
+        this._heartbeat_timer = setInterval(this._heartbeat.bind(this), heartbeat_interval)
+        this.emit('connect')
     }
 
     _login_req() {
@@ -127,161 +117,142 @@ class douyu_danmu extends events {
     }
 
     _on_data(data) {
-        if (this._all_buf.length === 0) {
-            this._all_buf = data
-        } else {
-            this._all_buf = Buffer.concat([this._all_buf, data])
-        }
+        this._all_buf = (this._all_buf.length === 0) ? data : Buffer.concat([this._all_buf, data])
         while (this._all_buf.length > 8) {
             try {
-                let len_0 = this._all_buf.readInt16LE(0)
-                let len_1 = this._all_buf.readInt16LE(4)
-                if (len_0 !== len_1)
-                    return this._all_buf = Buffer.alloc(0)
-                let msg_len = len_0 + 4
+                const len_0 = this._all_buf.readInt16LE(0)
+                const len_1 = this._all_buf.readInt16LE(4)
+                const msg_len = len_0 + 4
+                if (len_0 !== len_1) return this._all_buf = Buffer.alloc(0)
                 if (this._all_buf.length < msg_len) return
-                let single_msg = this._all_buf.slice(0, msg_len)
-                let single_msg_tail = single_msg[single_msg.length - 1]
-                if (single_msg_tail !== 0)
-                    return this._all_buf = Buffer.alloc(0)
+                const single_msg = this._all_buf.slice(0, msg_len)
+                const single_msg_tail = single_msg[single_msg.length - 1]
+                if (single_msg_tail !== 0) return this._all_buf = Buffer.alloc(0)
                 this._all_buf = this._all_buf.slice(msg_len)
-                let msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
-                if (msg_array) {
-                    msg_array.forEach(msg => {
-                        msg = msg.replace(/@=/g, '":"')
-                        msg = msg.replace(/\//g, '","')
-                        msg = msg.substring(0, msg.length - 3)
-                        msg = `{"${msg}}`
-                        this._format_msg(msg)
-                    })
-                }
+                const msg_array = single_msg.toString().match(/(type@=.*?)\x00/g)
+                if (!msg_array) continue
+                msg_array.forEach(msg => {
+                    msg = msg.replace(/@=/g, '":"')
+                    msg = msg.replace(/\//g, '","')
+                    msg = msg.substring(0, msg.length - 3)
+                    msg = `{"${msg}}`
+                    this._format_msg(msg)
+                })
             } catch (e) {
                 return this.emit('error', e)
             }
         }
     }
 
+    _build_chat(msg) {
+        let plat = 'pc_web'
+        if (msg.ct == '1') { plat = 'android' } else if (msg.ct == '2') { plat = 'ios' }
+        return {
+            type: 'chat',
+            time: new Date().getTime(),
+            from: {
+                name: msg.nn,
+                rid: msg.uid,
+                level: parseInt(msg.level),
+                plat: plat
+            },
+            id: msg.cid,
+            content: msg.txt
+        }
+    }
+
+    _build_gift(msg) {
+        const gift = this._gift_info[msg.gfid] || free_gift
+        const msg_obj = {
+            type: 'gift',
+            time: new Date().getTime(),
+            name: gift.name,
+            from: {
+                name: msg.nn,
+                rid: msg.uid,
+                level: parseInt(msg.level)
+            },
+            id: `${msg.uid}${msg.rid}${msg.gfid}${msg.hits}${msg.level}`,
+            count: parseInt(msg.gfcnt || 1),
+            price: parseInt(msg.gfcnt || 1) * gift.price,
+            earn: parseInt(msg.gfcnt || 1) * gift.price
+        }
+        if (gift.is_yuwan) {
+            msg_obj.type = 'yuwan'
+            delete msg_obj.price
+            delete msg_obj.earn
+        }
+        return msg_obj
+    }
+
+    _build_deserve(msg) {
+        let name = '初级酬勤'
+        let price = 15
+        if (msg.lev === '2') {
+            name = '中级酬勤'
+            price = 30
+        } else if (msg.lev === '3') {
+            name = '高级酬勤'
+            price = 50
+        }
+        let sui = msg.sui
+        try {
+            sui = sui.replace(/@A=/g, '":"')
+            sui = sui.replace(/@S/g, '","')
+            sui = sui.substring(0, sui.length - 2)
+            sui = `{"${sui}}`
+            sui = JSON.parse(sui)
+        } catch (e) {
+            sui = {
+                nick: '',
+                id: '',
+                level: 0
+            }
+        }
+        return {
+            type: 'deserve',
+            time: new Date().getTime(),
+            name: name,
+            from: {
+                name: sui.nick,
+                rid: sui.id,
+                level: parseInt(sui.level)
+            },
+            id: `${sui.id}${msg.rid}${msg.lev}${msg.hits}${sui.level}${sui.exp}`,
+            count: parseInt(msg.cnt || 1),
+            price: price,
+            earn: price
+        }
+    }
+
     _format_msg(msg) {
         try {
             msg = JSON.parse(msg.replace(/\\/g, ''))
-        } catch (e) {
-            return this.emit('error', e)
-        }
+        } catch (e) { return }
         let msg_obj
-        let time = new Date().getTime()
         switch (msg.type) {
             case 'chatmsg':
-                let plat = 'pc_web'
-                if (msg.ct == '1') {
-                    plat = 'android'
-                } else if (msg.ct == '2') {
-                    plat = 'ios'
-                }
-                msg_obj = {
-                    type: 'chat',
-                    time,
-                    from: {
-                        name: msg.nn,
-                        rid: msg.uid,
-                        level: parseInt(msg.level),
-                        plat: plat
-                    },
-                    id: msg.cid,
-                    content: msg.txt,
-                    raw: msg
-                }
+                msg_obj = this._build_chat(msg)
+                this.emit('message', msg_obj)
                 break
             case 'dgb':
-                let gift = this._gift_info[msg.gfid] || { name: '免费礼物', price: 0, is_yuwan: false }
-                msg_obj = {
-                    type: 'gift',
-                    time,
-                    name: gift.name,
-                    from: {
-                        name: msg.nn,
-                        rid: msg.uid,
-                        level: parseInt(msg.level)
-                    },
-                    is_yuwan: gift.is_yuwan,
-                    id: `${msg.uid}${msg.rid}${msg.gfid}${msg.hits}${msg.level}`,
-                    count: parseInt(msg.gfcnt || 1),
-                    price: parseInt(msg.gfcnt || 1) * gift.price,
-                    earn: parseInt(msg.gfcnt || 1) * gift.price,
-                    raw: msg
-                }
-                let weight_msg = {
-                    type: 'weight',
-                    time: new Date().getTime(),
-                    count: parseInt(msg.dw),
-                    raw: msg
-                }
-                this.emit('message', weight_msg)
+                msg_obj = this._build_gift(msg)
+                this.emit('message', msg_obj)
                 break
             case 'bc_buy_deserve':
-                let name = '初级酬勤'
-                let price = 15
-                if (msg.lev === '2') {
-                    name = '中级酬勤'
-                    price = 30
-                } else if (msg.lev === '3') {
-                    name = '高级酬勤'
-                    price = 50
-                }
-                let sui = msg.sui
-                try {
-                    sui = sui.replace(/@A=/g, '":"')
-                    sui = sui.replace(/@S/g, '","')
-                    sui = sui.substring(0, sui.length - 2)
-                    sui = `{"${sui}}`
-                    sui = JSON.parse(sui)
-                } catch (e) {
-                    sui = {
-                        nick: '',
-                        id: '',
-                        level: 0
-                    }
-                }
-                msg_obj = {
-                    type: 'deserve',
-                    time,
-                    name: name,
-                    from: {
-                        name: sui.nick,
-                        rid: sui.id,
-                        level: parseInt(sui.level)
-                    },
-                    id: `${sui.id}${msg.rid}${msg.lev}${msg.hits}${sui.level}${sui.exp}`,
-                    count: parseInt(msg.cnt || 1),
-                    price: price,
-                    raw: msg
-                }
+                msg_obj = this._build_deserve(msg)
+                this.emit('message', msg_obj)
                 break
             case 'loginres':
-                msg_obj = {
-                    type: 'other',
-                    time,
-                    raw: msg
-                }
                 this._join_group()
                 break
-            default:
-                msg_obj = {
-                    type: 'other',
-                    time,
-                    raw: msg
-                }
-                break
         }
-        this.emit('message', msg_obj)
     }
 
     _send(msg) {
         try {
-            let len = Buffer.byteLength(msg) + 9
-            let head = Buffer.from([len, 0x00, 0x00, 0x00, len, 0x00, 0x00, 0x00, 0xb1, 0x02, 0x00, 0x00])
-            let body = Buffer.from(msg)
-            let tail = Buffer.from([0x00])
-            let buf = Buffer.concat([head, body, tail])
+            const len = Buffer.byteLength(msg) + 9
+            const buf = Buffer.concat([Buffer.from([len, 0x00, 0x00, 0x00, len, 0x00, 0x00, 0x00, 0xb1, 0x02, 0x00, 0x00]), Buffer.from(msg), Buffer.from([0x00])])
             this._client.write(buf)
         } catch (err) {
             this.emit('error', err)
@@ -296,6 +267,7 @@ class douyu_danmu extends events {
     }
 
     stop() {
+        this._reconnect = false
         this.removeAllListeners()
         this._stop()
     }
