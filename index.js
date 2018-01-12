@@ -86,14 +86,16 @@ class douyu_danmu extends events {
             this._client.connect(danmu_port, danmu_addr)
             this._client.on('connect', this._on_connect.bind(this))
         }
-        this._client.on('error', err => {
-            this.emit('error', err)
-        })
-        this._client.on('close', async () => {
-            this._stop()
-            this.emit('close')
-        })
-        this._client.on('data', this._on_data.bind(this))
+        if (this._client) {
+            this._client.on('error', err => {
+                this.emit('error', err)
+            })
+            this._client.on('close', async () => {
+                this._stop()
+                this.emit('close')
+            })
+            this._client.on('data', this._on_data.bind(this))
+        }
     }
 
     _on_connect() {
