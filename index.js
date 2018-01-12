@@ -79,9 +79,9 @@ class douyu_danmu extends events {
                 this._client = info.socket
                 this._on_connect()
             } catch (e) {
-                this.emit('error', e)
                 this._stop()
                 this.emit('close')
+                this.emit('error', e)
             }
         } else {
             this._client = new net.Socket()
